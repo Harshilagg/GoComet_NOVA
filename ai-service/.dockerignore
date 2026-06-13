@@ -1,0 +1,12 @@
+ai-service/venv/
+ai-service/__pycache__/
+ai-service/*.py[cod]
+ai-service/*.pyo
+ai-service/*.pyd
+ai-service/.env
+ai-service/.git/
+ai-service/temp_*
+ai-service/proc_*
+ai-service/*.png
+ai-service/*.jpg
+ai-service/*.pdf

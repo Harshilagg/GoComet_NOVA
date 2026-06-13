@@ -1,0 +1,15 @@
+{
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Darwin",
+  "venvPath": ".",
+  "venv": "venv",
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "venv/**",
+    "__pycache__/**"
+  ],
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "none"
+}

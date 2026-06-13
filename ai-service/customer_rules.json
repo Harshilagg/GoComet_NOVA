@@ -1,0 +1,92 @@
+{
+  "_comment": "Customer rule sets for the Validator Agent. Each rule defines what fields are expected and enforced for a given customer's shipments.",
+  "customers": {
+    "nike": {
+      "customer_id": "nike",
+      "customer_name": "Nike Inc.",
+      "required_incoterms": ["FOB", "CIF"],
+      "required_port_of_loading": "Shanghai",
+      "allowed_ports_of_loading": ["Shanghai", "Ningbo", "Guangzhou"],
+      "required_consignee_contains": "Nike",
+      "allowed_consignees": ["Nike Imports LLC", "Nike Trading Company", "Nike Global Trading"],
+      "required_port_of_discharge": "Los Angeles",
+      "allowed_ports_of_discharge": ["Los Angeles", "Long Beach", "Seattle"],
+      "required_hs_code_prefix": "6404",
+      "confidence_threshold": 0.75,
+      "description": "Nike footwear and apparel imports from China to US West Coast"
+    },
+    "adidas": {
+      "customer_id": "adidas",
+      "customer_name": "Adidas AG",
+      "required_incoterms": ["FOB", "EXW"],
+      "required_port_of_loading": "Hamburg",
+      "allowed_ports_of_loading": ["Hamburg", "Rotterdam", "Antwerp", "Ho Chi Minh City"],
+      "required_consignee_contains": "Adidas",
+      "allowed_consignees": ["Adidas America Inc.", "Adidas International Trading", "Adidas Group US"],
+      "required_port_of_discharge": "New York",
+      "allowed_ports_of_discharge": ["New York", "Newark", "Baltimore"],
+      "required_hs_code_prefix": "6404",
+      "confidence_threshold": 0.75,
+      "description": "Adidas footwear imports from Europe and Vietnam to US East Coast"
+    },
+    "zara": {
+      "customer_id": "zara",
+      "customer_name": "Zara (Inditex)",
+      "required_incoterms": ["DDP", "DAP"],
+      "required_port_of_loading": "Barcelona",
+      "allowed_ports_of_loading": ["Barcelona", "Valencia", "Bilbao", "Dhaka", "Istanbul"],
+      "required_consignee_contains": "Zara",
+      "allowed_consignees": ["Zara USA Inc.", "Inditex USA LLC"],
+      "required_port_of_discharge": "Miami",
+      "allowed_ports_of_discharge": ["Miami", "Savannah", "New York"],
+      "required_hs_code_prefix": "6204",
+      "confidence_threshold": 0.70,
+      "description": "Zara apparel imports for US retail distribution"
+    },
+    "apple": {
+      "customer_id": "apple",
+      "customer_name": "Apple Inc.",
+      "required_incoterms": ["DAP", "DDP"],
+      "required_port_of_loading": "Shenzhen",
+      "allowed_ports_of_loading": ["Shenzhen", "Hong Kong", "Shanghai", "Taipei"],
+      "required_consignee_contains": "Apple",
+      "allowed_consignees": ["Apple Inc.", "Apple Operations International", "Braeburn Capital"],
+      "required_port_of_discharge": "Los Angeles",
+      "allowed_ports_of_discharge": ["Los Angeles", "San Francisco", "Seattle"],
+      "required_hs_code_prefix": "8471",
+      "confidence_threshold": 0.85,
+      "description": "Apple consumer electronics imports — high confidence threshold enforced"
+    },
+    "maersk": {
+      "customer_id": "maersk",
+      "customer_name": "Maersk Line",
+      "required_incoterms": ["CFR", "CIF", "FOB"],
+      "required_port_of_loading": null,
+      "allowed_ports_of_loading": null,
+      "required_consignee_contains": "Maersk",
+      "allowed_consignees": null,
+      "required_port_of_discharge": null,
+      "allowed_ports_of_discharge": null,
+      "required_hs_code_prefix": null,
+      "confidence_threshold": 0.65,
+      "description": "Maersk general cargo — flexible routing, lower confidence threshold"
+    },
+    "generic": {
+      "customer_id": "generic",
+      "customer_name": "Generic / Unknown Customer",
+      "required_incoterms": null,
+      "required_port_of_loading": null,
+      "allowed_ports_of_loading": null,
+      "required_consignee_contains": null,
+      "allowed_consignees": null,
+      "required_port_of_discharge": null,
+      "allowed_ports_of_discharge": null,
+      "required_hs_code_prefix": null,
+      "confidence_threshold": 0.60,
+      "description": "Fallback rules for unrecognized customers — validates completeness only"
+    }
+  },
+  "default_customer": "generic",
+  "_version": "1.0.0",
+  "_last_updated": "2026-06-13"
+}

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+paddleocr
+paddlepaddle
+groq
+boto3
+python-dotenv
+python-multipart
+requests
+pymupdf
+opencv-python-headless

@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+*.png
+*.jpg
+*.jpeg
+*.pdf
+proc_*
+temp_*
