@@ -19,7 +19,7 @@ An AI-powered platform that automates trade document processing using a **4-agen
 - [Query Agent — Natural Language to SQL](#query-agent--natural-language-to-sql)
 - [API Endpoints](#api-endpoints)
 - [Key Design Decisions](#key-design-decisions)
-- [Tested Sample Documnets])(#example-test-cases)
+- [Tested Sample Documnets](#example-test-cases)
 
 ---
 
