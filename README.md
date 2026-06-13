@@ -427,3 +427,25 @@ The answer is always **grounded in actual database results** — the LLM cannot 
 | **Full audit trail** | Every pipeline step — download, extraction, validation, routing — is logged to `audit_logs` with timestamps and durations. No silent failures. |
 | **Smart OCR routing** | Digital PDFs skip OCR entirely (PyMuPDF fast path). Only scanned/image documents hit PaddleOCR. This cuts processing time from ~20s to <2s for digital docs. |
 | **Anti-hallucination in Query Agent** | The NL answer LLM receives only actual SQL results — it cannot invent data. Empty results explicitly return "no data found." |
+
+---
+
+## Example Test Cases
+
+You can view the test documents used to evaluate this pipeline here:
+**[Link to Test Documents Folder]** *(Add drive link here)*
+
+### 1. `GoComet_Test-1.pdf` (Clean Digital PDF)
+- **Document Type**: Commercial Invoice (Digital)
+- **Pipeline Result**: ✅ **Auto Approve**
+- **How it works**: The pipeline bypassed OCR and instantly extracted the text via the PyMuPDF fast-path. The Extractor Agent pulled all 8 fields with ~95%+ confidence. The Validator Agent matched all fields perfectly against the rules, resulting in an automatic approval with zero human intervention.
+
+### 2. `GoComet_Test-2.pdf` (Data Mismatch)
+- **Document Type**: Commercial Invoice
+- **Pipeline Result**: ❌ **Amendment Required**
+- **How it works**: The extracted data contained a critical error that violated the compliance rules. The Validator Agent detected a hard mismatch between the expected allowed values and the found value. The Router Agent flagged this as a failure and generated an "Amendment Draft" explicitly detailing what needs to be changed.
+
+### 3. `Adobe Scan 13-Jun-2026.pdf` (Handwritten/Scanned)
+- **Document Type**: Scanned Document
+- **Pipeline Result**: ⚠️ **Human Review**
+- **How it works**: This file was a low-quality scan with handwriting. The PaddleOCR pipeline extracted the text, but the OCR misread "Apple Inc." as "Aphle Inc.". Instead of throwing a hard mismatch, the Validator's **Fuzzy Matching logic** detected that "Aphle" was highly similar to "Apple". It smartly flagged the field as *Uncertain* (possible OCR misread) rather than a strict error, gracefully routing the document to a human operator for a quick manual review.

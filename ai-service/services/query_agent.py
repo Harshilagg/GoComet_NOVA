@@ -176,7 +176,7 @@ def run_query(question: str) -> dict:
             temperature=0.0,  # Fully deterministic SQL generation
             max_tokens=500
         )
-        raw_sql = sql_completion.choices[0].message.content
+        raw_sql = sql_completion.choices[0].message.content or ""
         sql = _extract_sql(raw_sql)
         result["sql_generated"] = sql
         logger.info(f"[Query] Generated SQL: {sql}")
@@ -212,7 +212,7 @@ def run_query(question: str) -> dict:
             temperature=0.1,
             max_tokens=300
         )
-        result["answer"] = answer_completion.choices[0].message.content.strip()
+        result["answer"] = (answer_completion.choices[0].message.content or "").strip()
         result["success"] = True
         logger.info(f"[Query] Answer generated successfully.")
 
