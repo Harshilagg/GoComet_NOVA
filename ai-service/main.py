@@ -57,11 +57,9 @@ class QueryRequest(BaseModel):
 # ── Database Initialization ────────────────────────────────────────────────────
 # ARCHITECTURE: DB init happens at startup, not on first request.
 # This ensures tables exist before any pipeline runs.
-@app.on_event("startup")
-async def startup_event():
-    from utils.db_utils import init_db
-    init_db()
-    logger.info("[TradeAI] SQLite database initialized.")
+from utils.db_utils import init_db
+init_db()
+logger.info("[TradeAI] SQLite database initialized.")
 
 
 # ── Health Check ──────────────────────────────────────────────────────────────

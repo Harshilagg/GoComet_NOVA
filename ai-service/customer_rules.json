@@ -6,12 +6,12 @@
       "customer_name": "Nike Inc.",
       "required_incoterms": ["FOB", "CIF"],
       "required_port_of_loading": "Shanghai",
-      "allowed_ports_of_loading": ["Shanghai", "Ningbo", "Guangzhou"],
+      "allowed_ports_of_loading": ["Shanghai", "Ningbo", "Guangzhou","New Delhi"],
       "required_consignee_contains": "Nike",
-      "allowed_consignees": ["Nike Imports LLC", "Nike Trading Company", "Nike Global Trading"],
+      "allowed_consignees": ["Nike Imports LLC", "Nike Trading Company", "Nike Global Trading","Nike India Pvt Ltd"],
       "required_port_of_discharge": "Los Angeles",
-      "allowed_ports_of_discharge": ["Los Angeles", "Long Beach", "Seattle"],
-      "required_hs_code_prefix": "6404",
+      "allowed_ports_of_discharge": ["Los Angeles", "Long Beach", "Seattle","Mumbai"],
+      "required_hs_code_prefix": "847130",
       "confidence_threshold": 0.75,
       "description": "Nike footwear and apparel imports from China to US West Coast"
     },
@@ -54,8 +54,8 @@
       "required_port_of_discharge": "Los Angeles",
       "allowed_ports_of_discharge": ["Los Angeles", "San Francisco", "Seattle"],
       "required_hs_code_prefix": "8471",
-      "confidence_threshold": 0.85,
-      "description": "Apple consumer electronics imports — high confidence threshold enforced"
+      "confidence_threshold": 0.72,
+      "description": "Apple consumer electronics imports — moderate confidence threshold for scan/handwriting tolerance"
     },
     "maersk": {
       "customer_id": "maersk",

@@ -1,220 +1,429 @@
-# TradeAI — Multi-Agent Trade Document Platform
+# GoComet — Multi-Agent Trade Document Processing Platform
 
-A **production-quality, multi-agent AI system** for processing international trade documents. Built for the GoComet Full Stack AI Engineer Assignment.
-
----
-
-## Live Demo
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| **Frontend** | [documentprocessorai-2.onrender.com](https://documentprocessorai-2.onrender.com) | React dashboard |
-| **Backend API** | [documentprocessorai-1.onrender.com](https://documentprocessorai-1.onrender.com) | Node.js orchestration layer |
-| **AI Service** | [aggarwalharshil02-ai-processor.hf.space](https://aggarwalharshil02-ai-processor.hf.space) | Python multi-agent pipeline |
-
-**Sample credentials:** `sample@gmail.com` / `sampleaccount`
+An AI-powered platform that automates trade document processing using a **4-agent pipeline architecture**. Upload a Commercial Invoice, Bill of Lading, or Packing List — the system extracts shipment fields via OCR + LLM, validates them against customer-specific rules, routes a compliance decision, and lets you query the data in natural language.
 
 ---
 
-## System Architecture
+## Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Agent Pipeline](#agent-pipeline)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Environment Variables](#environment-variables)
+- [Setup & Run Instructions](#setup--run-instructions)
+- [How It Works — End to End](#how-it-works--end-to-end)
+- [Customer Rules Engine](#customer-rules-engine)
+- [OCR & Text Extraction Strategy](#ocr--text-extraction-strategy)
+- [Query Agent — Natural Language to SQL](#query-agent--natural-language-to-sql)
+- [API Endpoints](#api-endpoints)
+- [Key Design Decisions](#key-design-decisions)
+
+---
+
+## Architecture Overview
+
+The platform follows a **three-tier architecture** with a clear separation of concerns:
 
 ```
-Trade Document (PDF / Image)
-        │
-        ▼ POST /upload  →  AWS S3 (raw file storage)
-        │
-        ▼ POST /trigger →  Node.js backend
-        │
-┌───────▼──────────────────────────────────────────────┐
-│              Python AI Service (FastAPI)               │
-│                                                        │
-│  ① EXTRACTOR AGENT   (Groq LLaMA-3.3 70B)            │
-│     PyMuPDF (digital PDF) or PaddleOCR (scanned)      │
-│     → 8 fields: { value, confidence, evidence }        │
-│                                                        │
-│  ② VALIDATOR AGENT   (Deterministic — zero LLM)       │
-│     Loads customer_rules.json for customer_id          │
-│     → per-field: match | mismatch | uncertain          │
-│                                                        │
-│  ③ ROUTER AGENT      (Groq LLaMA-3.3 70B)            │
-│     → auto_approve | human_review | amendment_required │
-│     → Human-readable reasoning + amendment draft       │
-└───────────────────────────────────────────────────────┘
-        │
-        ▼  Persist
-   SQLite DB (shipments, validation_results,
-              agent_decisions, audit_logs)
-        │
-        ▼  Query Layer
-   ④ QUERY AGENT  → NL → SQL → Grounded Answer
-        │
-        ▼  REST API (Node.js proxy)
-   React Dashboard
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────────────────┐
+│                 │     │                  │     │         AI Service (Python)      │
+│  React Frontend │────▶│  Node.js Server  │────▶│                                 │
+│  (Vite + React) │     │  (Express API)   │     │  ┌───────────┐  ┌───────────┐   │
+│                 │◀────│                  │◀────│  │ Extractor │─▶│ Validator │   │
+│  Dashboard      │     │  - S3 upload     │     │  │   Agent   │  │   Agent   │   │
+│  Shipment List  │     │  - Auth layer    │     │  └───────────┘  └─────┬─────┘   │
+│  Query Panel    │     │  - Proxy to AI   │     │                       │         │
+│  Detail View    │     │                  │     │                 ┌─────▼─────┐   │
+│                 │     │                  │     │                 │  Router   │   │
+└─────────────────┘     └──────────────────┘     │                 │   Agent   │   │
+                                                 │                 └───────────┘   │
+                                                 │  ┌───────────┐                 │
+                                                 │  │   Query   │  ┌───────────┐  │
+                                                 │  │   Agent   │──│  SQLite   │  │
+                                                 │  └───────────┘  └───────────┘  │
+                                                 └─────────────────────────────────┘
+```
+
+| Layer | Technology | Role |
+|-------|-----------|------|
+| **Frontend** | React 19 + Vite + TailwindCSS | Upload UI, dashboard, shipment detail panel, NL query interface |
+| **Backend** | Node.js + Express 5 | File upload to S3, auth middleware, API proxy to Python AI service |
+| **AI Service** | Python + FastAPI + Groq LLaMA 3.3 70B | 4-agent pipeline: OCR → Extract → Validate → Route → Query |
+| **Storage** | SQLite (shipment data) + AWS S3 (raw files) | Zero-infrastructure persistence — SQLite file travels with the service |
+
+---
+
+## Agent Pipeline
+
+The core of the platform is a **sequential multi-agent pipeline** where each agent has a single responsibility:
+
+### 1. Extractor Agent (`services/ai_service.py`)
+
+- **Input**: Raw text from OCR/PDF extraction
+- **Output**: 8 structured shipment fields, each with `{value, confidence, source_evidence}`
+- **LLM**: Groq LLaMA 3.3 70B with `temperature=0.1` for deterministic extraction
+- **Fields extracted**: `consignee_name`, `hs_code`, `port_of_loading`, `port_of_discharge`, `incoterms`, `description_of_goods`, `gross_weight`, `invoice_number`
+- **Anti-hallucination**: LLM is instructed to return `null` for uncertain fields — never guess
+- **Retry logic**: Up to 2 retries on LLM failure with full audit logging
+
+### 2. Validator Agent (`services/validator_agent.py`)
+
+- **Input**: Extracted fields from Agent 1 + customer ID
+- **Output**: Per-field validation status — `match` | `mismatch` | `uncertain`
+- **Zero LLM calls** — entirely deterministic Python logic for auditability
+- **Customer rules** loaded from `customer_rules.json` (configurable per customer)
+- **Fuzzy matching** via `difflib.SequenceMatcher` to handle OCR misreads (e.g., "Aphle" → "Apple" detected as similar, routed to review instead of hard rejection)
+- **Confidence gating**: Fields below the customer-specific threshold are auto-flagged as `uncertain`
+
+### 3. Router Agent (`services/router_agent.py`)
+
+- **Input**: Validation output from Agent 2
+- **Output**: Final decision + human-readable reasoning
+- **Hybrid design**: Decision is **deterministic** (rule-based), reasoning is **LLM-generated**
+- **Decision rules**:
+  - Any mismatch → `amendment_required`
+  - Any uncertain field (no mismatches) → `human_review`
+  - All matched → `auto_approve`
+- **LLM role**: Generates professional compliance explanation, amendment drafts, and approval summaries — the decision itself never depends on the LLM
+
+### 4. Query Agent (`services/query_agent.py`)
+
+- **Input**: Natural language question from the user
+- **Output**: SQL-grounded answer with raw data
+- **Pipeline**: Question → LLM → SQL → SQLite execution → LLM → natural language answer
+- **Anti-hallucination**: The answer LLM receives **only the actual query results**, never guesses
+- **Security**: Only `SELECT` statements are permitted — no writes allowed
+
+---
+
+## Tech Stack
+
+### Frontend
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| React | 19.x | UI framework |
+| Vite | 5.x | Build tool and dev server |
+| TailwindCSS | 3.x | Utility-first styling |
+| Axios | 1.x | HTTP client |
+
+### Backend (Node.js)
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| Express | 5.x | HTTP server and routing |
+| AWS SDK v3 | 3.x | S3 file upload and presigned URL generation |
+| Multer | 2.x | Multipart file upload handling |
+| Axios | 1.x | Proxy requests to Python AI service |
+
+### AI Service (Python)
+| Technology | Purpose |
+|-----------|---------|
+| FastAPI + Uvicorn | Async HTTP server |
+| Groq SDK | LLM inference (LLaMA 3.3 70B) |
+| PaddleOCR (PP-OCRv3) | OCR for scanned/handwritten documents |
+| PyMuPDF (fitz) | Digital PDF text extraction |
+| OpenCV | Image preprocessing for OCR |
+| SQLite3 | Embedded database for shipment data |
+| Boto3 | AWS S3 file downloads |
+
+---
+
+## Project Structure
+
+```
+GoComet/
+├── client/                        # React Frontend
+│   ├── src/
+│   │   ├── App.jsx                # Main application — dashboard, upload, views
+│   │   ├── components/
+│   │   │   ├── FieldCard.jsx      # Extracted field display with confidence bar
+│   │   │   ├── PipelineStatus.jsx # Visual pipeline stepper (5 stages)
+│   │   │   ├── QueryPanel.jsx     # Natural language query interface
+│   │   │   ├── RouterDecision.jsx # Decision card with reasoning + amendments
+│   │   │   ├── ShipmentList.jsx   # Shipment table with status badges
+│   │   │   └── ValidationTable.jsx# Field-by-field validation results
+│   │   ├── index.css              # Global styles
+│   │   └── main.jsx               # React entry point
+│   ├── .env                       # VITE_API_URL and Firebase config
+│   └── package.json
+│
+├── server/                        # Node.js Backend
+│   ├── server.js                  # Express API — upload, trigger, proxy
+│   ├── .env                       # AWS + Groq + Python service URL
+│   └── package.json
+│
+├── ai-service/                    # Python AI Service
+│   ├── main.py                    # FastAPI app — endpoints + pipeline orchestration
+│   ├── config.py                  # Environment config + validation
+│   ├── logger.py                  # Structured logging
+│   ├── customer_rules.json        # Per-customer validation rules (6 customers)
+│   ├── requirements.txt           # Python dependencies
+│   ├── services/
+│   │   ├── ai_service.py          # Extractor Agent — LLM field extraction
+│   │   ├── validator_agent.py     # Validator Agent — deterministic rule checks
+│   │   ├── router_agent.py        # Router Agent — decision + LLM reasoning
+│   │   ├── query_agent.py         # Query Agent — NL → SQL → answer
+│   │   ├── extraction_service.py  # Smart extraction: digital PDF vs OCR routing
+│   │   └── ocr_service.py         # PaddleOCR pipeline (PP-OCRv3, CPU-optimized)
+│   ├── utils/
+│   │   ├── db_utils.py            # SQLite CRUD — shipments, validations, decisions, audit
+│   │   └── s3_utils.py            # AWS S3 download utility
+│   └── shipments.db               # SQLite database (auto-created on startup)
+│
+└── README.md
 ```
 
 ---
 
-## Three-Service Architecture
+## Prerequisites
 
-| Service | Stack | Port | Purpose |
-|---------|-------|------|---------|
-| **ai-service** | Python / FastAPI | 8000 | Multi-agent pipeline, SQLite |
-| **server** | Node.js / Express | 5001 | Auth, S3 upload, API proxy |
-| **client** | React / Vite / Tailwind | 5173 | Trade shipment dashboard |
+Ensure you have the following installed:
 
----
+| Requirement | Minimum Version | Check Command |
+|------------|----------------|--------------|
+| **Node.js** | 18.x or higher | `node -v` |
+| **npm** | 9.x or higher | `npm -v` |
+| **Python** | 3.10 or higher | `python3 --version` |
+| **pip** | Latest | `pip --version` |
 
-## Agent Details
-
-### ① Extractor Agent
-- Runs hybrid OCR: PyMuPDF for digital PDFs, PaddleOCR PP-OCRv3 for scanned
-- Sends raw text to Groq LLaMA-3.3 70B with a strict JSON prompt
-- Extracts 8 trade fields, each with `{ value, confidence, source_evidence }`
-- Returns `null` if uncertain — never hallucinate
-
-### ② Validator Agent
-- Zero LLM calls — fully deterministic, reproducible, auditable
-- Loads per-customer rules from `customer_rules.json`
-- Checks: consignee match, HS code prefix, incoterms, ports
-- Three outcomes per field: `match` | `mismatch` | `uncertain`
-
-### ③ Router Agent
-- Applies decision rules: any mismatch → `amendment_required`, any uncertain → `human_review`, all match → `auto_approve`
-- Uses Groq to generate human-readable reasoning text
-- Produces amendment draft with specific discrepancies
-
-### ④ Query Agent (NL→SQL)
-- Takes natural language questions about shipment data
-- Uses Groq to generate SQLite-compatible SQL
-- Executes query, returns grounded answer from actual records
-- Anti-hallucination: answer LLM only sees real query results
-
----
-
-## Customer Rule Sets
-
-| Customer | Incoterms | Loading | Discharge | HS Prefix | Threshold |
-|----------|-----------|---------|-----------|-----------|-----------|
-| `nike` | FOB, CIF | Shanghai | Los Angeles | 6404 | 0.75 |
-| `adidas` | FOB, EXW | Hamburg | New York | 6404 | 0.75 |
-| `zara` | DDP, DAP | Barcelona | Miami | 6204 | 0.70 |
-| `apple` | DAP, DDP | Shenzhen | Los Angeles | 8471 | 0.85 |
-| `maersk` | CFR, CIF, FOB | Any | Any | Any | 0.65 |
-| `generic` | Any | Any | Any | Any | 0.60 |
-
----
-
-## Local Setup
-
-### Prerequisites
-- Node.js v18+
-- Python 3.10+
-- AWS S3 bucket (private)
-- Firebase project (Auth only)
-- Groq API key
-
-### Terminal 1 — Python AI Service
-```bash
-cd ai-service
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-```
-
-### Terminal 2 — Node.js Backend
-```bash
-cd server
-npm install
-node server.js
-```
-
-### Terminal 3 — React Frontend
-```bash
-cd client
-npm install
-npm run dev
-```
-
-App runs at: `http://localhost:5173`
+You will also need:
+- An **AWS account** with an S3 bucket for file storage
+- A **Groq API key** (free tier available at [console.groq.com](https://console.groq.com))
 
 ---
 
 ## Environment Variables
 
-### `ai-service/.env`
-```
-GROQ_API_KEY=...
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=...
-AWS_BUCKET_NAME=...
+### `server/.env`
+
+```env
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=your_aws_region
+AWS_BUCKET_NAME=your_s3_bucket_name
+GROQ_API_KEY=your_groq_api_key
+PYTHON_SERVICE_URL=http://127.0.0.1:7860
 ```
 
-### `server/.env`
-```
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=...
-AWS_BUCKET_NAME=...
-FIREBASE_PROJECT_ID=...
-FIREBASE_CLIENT_EMAIL=...
-FIREBASE_PRIVATE_KEY="..."
-GROQ_API_KEY=...
-PYTHON_SERVICE_URL=http://localhost:8000
+### `ai-service/.env`
+
+```env
+GROQ_API_KEY=your_groq_api_key
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=your_aws_region
+AWS_BUCKET_NAME=your_s3_bucket_name
 ```
 
 ### `client/.env`
-```
+
+```env
 VITE_API_URL=http://localhost:5001
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-VITE_FIREBASE_STORAGE_BUCKET=...
-VITE_FIREBASE_MESSAGING_SENDER_ID=...
-VITE_FIREBASE_APP_ID=...
 ```
 
 ---
 
-## Data Flow Diagram
+## Setup & Run Instructions
 
-```mermaid
-graph TD
-    A[React Frontend] -->|POST /upload| B[Node.js Backend]
-    B -->|Store raw file| C[(AWS S3)]
-    B -->|POST /trigger| D[Python AI Service]
-    D -->|Download| C
-    D --> E[Extraction Service]
-    E -->|Digital PDF| F[PyMuPDF]
-    E -->|Scanned doc| G[PaddleOCR PP-OCRv3]
-    F --> H[Extractor Agent - Groq]
-    G --> H
-    H --> I[Validator Agent - Deterministic]
-    I --> J[Router Agent - Groq]
-    J --> K[(SQLite DB)]
-    K --> L[Query Agent - NL to SQL]
-    K -->|REST API| B
-    B -->|Proxy| A
+> **All three services must be running simultaneously.** Open three separate terminal windows/tabs.
 
-    subgraph "Auth Flow"
-    A -->|Firebase token| B
-    B -->|Verify token| M[Firebase Auth]
-    end
+### Terminal 1 — Python AI Service (Port 7860)
 
-    subgraph "Secure File View"
-    A -->|GET /documents/:id/view| B
-    B -->|Generate presigned URL| C
-    end
+```bash
+cd ai-service
+
+# Create virtual environment (first time only)
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate        # macOS/Linux
+# venv\Scripts\activate         # Windows
+
+# Install dependencies (first time only)
+pip install -r requirements.txt
+
+# Start the AI service
+python main.py
 ```
+
+> **Note:** On first run, PaddleOCR will download ~150MB of model weights. This is a one-time operation. The service will print `[TradeAI] SQLite database initialized` when ready.
+
+### Terminal 2 — Node.js Backend (Port 5001)
+
+```bash
+cd server
+
+# Install dependencies (first time only)
+npm install
+
+# Start the server
+node server.js
+```
+
+> You should see: `[Server] TradeAI Backend running on port 5001`
+
+### Terminal 3 — React Frontend (Port 5173)
+
+```bash
+cd client
+
+# Install dependencies (first time only)
+npm install
+
+# Start dev server
+npm run dev
+```
+
+> Open **http://localhost:5173** in your browser.
+
+### Verify Everything Is Working
+
+Once all three terminals are running:
+1. Open `http://localhost:5173` — you should see the GoComet dashboard
+2. The sidebar should show **System Online** with a green indicator
+3. Quick Stats should display zeros (no shipments yet)
+4. Upload a trade document PDF and select a customer → the pipeline will process it in ~15–30 seconds
+
+---
+
+## How It Works — End to End
+
+Here's the complete flow when you upload a document:
+
+```
+User uploads PDF via React UI
+        │
+        ▼
+Node.js receives file via Multer
+        │
+        ▼
+File uploaded to AWS S3 (raw storage)
+        │
+        ▼
+Node.js calls POST /trigger → Python AI service
+        │
+        ▼
+┌───────────────────────────────────────────────────────┐
+│                PYTHON AI PIPELINE                     │
+│                                                       │
+│  1. Download file from S3                             │
+│  2. Smart Text Extraction                             │
+│     ├── Digital PDF? → PyMuPDF (fast path)            │
+│     └── Scanned/Image? → PaddleOCR (PP-OCRv3)        │
+│  3. Extractor Agent → 8 fields via Groq LLM          │
+│  4. Validator Agent → rule-based field validation     │
+│  5. Router Agent → decision + LLM reasoning           │
+│  6. All results saved to SQLite                       │
+│  7. Every step logged to audit_logs                   │
+└───────────────────────────────────────────────────────┘
+        │
+        ▼
+React UI polls /shipments every 5s → shows results
+```
+
+---
+
+## Customer Rules Engine
+
+The Validator Agent loads rules from `ai-service/customer_rules.json`. Each customer has:
+
+| Rule | Example (Apple) | Purpose |
+|------|----------------|---------|
+| `required_incoterms` | `["DAP", "DDP"]` | Allowed trade terms |
+| `allowed_ports_of_loading` | `["Shenzhen", "Hong Kong", ...]` | Valid origin ports |
+| `allowed_consignees` | `["Apple Inc.", "Apple Operations International"]` | Expected consignee names |
+| `required_hs_code_prefix` | `"8471"` | HS code must start with this prefix |
+| `confidence_threshold` | `0.72` | Minimum extraction confidence to accept a field |
+
+**Pre-configured customers:** Nike, Adidas, Zara, Apple, Maersk, and a Generic fallback.
+
+To add a new customer, add a new entry to the `customers` object in `customer_rules.json`. The validator will pick it up on the next pipeline run without a restart.
+
+---
+
+## OCR & Text Extraction Strategy
+
+The system uses a **hybrid extraction strategy** that minimizes OCR usage for speed:
+
+```
+Input file
+    │
+    ├── Is it an image (PNG/JPG)?
+    │       └── Yes → PaddleOCR directly
+    │
+    └── Is it a PDF?
+            │
+            ├── Try PyMuPDF digital text extraction (fast path)
+            │       └── Text quality check: ≥80 chars + ≥25% alphabetic?
+            │               ├── Yes → Use digital text (instant)
+            │               └── No → Fallback to PaddleOCR
+            │
+            └── PaddleOCR Pipeline:
+                    1. Convert PDF page → image at 130 DPI
+                    2. Resize to 1000px width (color-preserving)
+                    3. Run PP-OCRv3 (CPU-optimized)
+                    4. If <100 chars extracted → retry at 1400px
+```
+
+**Why PaddleOCR over Tesseract?** PP-OCRv3 achieves significantly higher accuracy on mixed-language and handwritten documents, which is common in trade documentation.
+
+---
+
+## Query Agent — Natural Language to SQL
+
+The Query panel lets you ask questions in plain English. Examples:
+
+| Question | What happens |
+|----------|-------------|
+| "How many shipments were processed today?" | → `SELECT COUNT(*) FROM shipments WHERE date(created_at) = date('now')` |
+| "Show all Apple shipments that need amendment" | → `SELECT * FROM shipments s JOIN agent_decisions d ON ... WHERE d.decision = 'amendment_required'` |
+| "What was the average extraction confidence?" | → `SELECT AVG(extraction_confidence) FROM shipments` |
+| "List all mismatched fields" | → `SELECT * FROM validation_results WHERE status = 'mismatch'` |
+
+The answer is always **grounded in actual database results** — the LLM cannot hallucinate numbers because it only sees real query output.
+
+---
+
+## API Endpoints
+
+### Node.js Server (Port 5001)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/upload` | Upload trade document to S3 |
+| `POST` | `/trigger` | Trigger AI pipeline for a document |
+| `GET` | `/documents` | List all uploaded documents |
+| `GET` | `/documents/:id/view` | Get presigned S3 URL for document viewing |
+| `GET` | `/shipments` | List all processed shipments (proxied to Python) |
+| `GET` | `/shipments/:id` | Get full pipeline result for one shipment |
+| `GET` | `/stats` | Dashboard statistics |
+| `GET` | `/decisions` | List all router decisions |
+| `POST` | `/query` | Natural language query over shipment data |
+
+### Python AI Service (Port 7860)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/process` | Trigger 3-agent pipeline (async background task) |
+| `GET` | `/shipments` | List shipments from SQLite |
+| `GET` | `/shipments/:id` | Full shipment detail with validation + decision + audit trail |
+| `GET` | `/stats` | Aggregate statistics |
+| `GET` | `/decisions` | All agent decisions |
+| `POST` | `/query` | NL → SQL → answer pipeline |
+| `GET` | `/health` | Service health check |
 
 ---
 
 ## Key Design Decisions
 
-- **SQLite over Firestore** for shipment data: zero infra, fully queryable, portable for demo
-- **Firebase kept for Auth only**: login/logout UX preserved, all document ownership checks intact
-- **S3 kept for raw files**: presigned URL viewer for original documents is fully functional
-- **Zero-hallucination extraction**: LLM returns `null` for uncertain fields; never invents values
-- **Deterministic validation**: Validator Agent makes zero LLM calls — reproducible and auditable
-- **Grounded NL queries**: Query Agent LLM only sees actual SQLite rows — cannot fabricate answers
+| Decision | Rationale |
+|----------|-----------|
+| **SQLite over Firestore** | Zero infrastructure — the `.db` file is portable, embeddable, and supports raw SQL for the Query Agent. No cloud DB setup needed to run on a laptop. |
+| **Deterministic validation (no LLM)** | Validator Agent uses pure Python logic — every result is reproducible and auditable. LLMs are non-deterministic and shouldn't make compliance decisions. |
+| **Hybrid decision engine** | The Router's decision is deterministic (rule-based), but the explanation is LLM-generated. This gives you auditability AND readability. |
+| **Fuzzy matching for OCR tolerance** | OCR can misread characters (e.g., "Aphle" vs "Apple"). Fuzzy matching with ≥70% similarity routes these to human review instead of outright rejection. |
+| **Field-level confidence tracking** | Every extracted field carries a `confidence` score (0.0–1.0) and `source_evidence` (verbatim quote). This enables per-field audit and threshold-based gating. |
+| **Full audit trail** | Every pipeline step — download, extraction, validation, routing — is logged to `audit_logs` with timestamps and durations. No silent failures. |
+| **Smart OCR routing** | Digital PDFs skip OCR entirely (PyMuPDF fast path). Only scanned/image documents hit PaddleOCR. This cuts processing time from ~20s to <2s for digital docs. |
+| **Anti-hallucination in Query Agent** | The NL answer LLM receives only actual SQL results — it cannot invent data. Empty results explicitly return "no data found." |

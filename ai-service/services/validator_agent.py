@@ -20,18 +20,22 @@ ARCHITECTURE NOTE:
 
 import json
 import os
+from difflib import SequenceMatcher
 from config import Config
 from logger import logger
+
+
+def _fuzzy_similarity(a: str, b: str) -> float:
+    """Returns a 0.0–1.0 similarity score between two strings (case-insensitive)."""
+    return SequenceMatcher(None, a.upper(), b.upper()).ratio()
 
 
 # ── Customer Rules Cache (loaded once at startup) ──────────────────────────────
 _rules_cache: dict | None = None
 
 def _load_rules() -> dict:
-    """Loads and caches customer_rules.json. Raises if file is missing."""
+    """Loads customer_rules.json. Always reloads from disk so edits are picked up instantly."""
     global _rules_cache
-    if _rules_cache is not None:
-        return _rules_cache
 
     rules_path = Config.CUSTOMER_RULES_PATH
     if not os.path.exists(rules_path):
@@ -41,7 +45,6 @@ def _load_rules() -> dict:
     with open(rules_path, "r") as f:
         data = json.load(f)
     _rules_cache = data
-    logger.info(f"[Validator] Rules loaded for {len(data.get('customers', {}))} customers.")
     return _rules_cache
 
 
@@ -117,8 +120,9 @@ def _validate_single_field(
     rule_normalized = rule_value.strip().upper() if isinstance(rule_value, str) else str(rule_value).upper() if rule_value else None
     allowed_normalized = [v.strip().upper() for v in allowed_values] if allowed_values else None
 
-    # ── CHECK: allowed_values list (broader match) ──
+    # ── CHECK: allowed_values list (broader match + OCR fuzzy fallback) ──
     if allowed_normalized:
+        # First: exact substring match (original logic)
         match_found = any(
             allowed in found_normalized or found_normalized in allowed
             for allowed in allowed_normalized
@@ -131,14 +135,34 @@ def _validate_single_field(
                 "confidence": round(confidence, 3),
                 "reason": f"'{found_value}' matches allowed values."
             }
-        else:
+
+        # Second: fuzzy similarity match — catches OCR misreads (e.g. "Aphle" → "Apple")
+        # A similarity >= 0.70 means the value is CLOSE but not exact → treat as uncertain
+        # (needs human review), NOT a hard mismatch (which forces amendment).
+        best_similarity = max(
+            _fuzzy_similarity(found_normalized, allowed)
+            for allowed in allowed_normalized
+        )
+        if best_similarity >= 0.70:
             return {
-                "status": "mismatch",
+                "status": "uncertain",
                 "expected": " | ".join(allowed_values),
                 "found": found_value,
                 "confidence": round(confidence, 3),
-                "reason": f"Expected one of {allowed_values}, but found '{found_value}'."
+                "reason": (
+                    f"'{found_value}' is similar to an allowed value (similarity: {best_similarity:.0%}) "
+                    f"but does not match exactly — possible OCR misread. Human review recommended."
+                )
             }
+
+        # Third: no match, not fuzzy close → hard mismatch
+        return {
+            "status": "mismatch",
+            "expected": " | ".join(allowed_values),
+            "found": found_value,
+            "confidence": round(confidence, 3),
+            "reason": f"Expected one of {allowed_values}, but found '{found_value}'."
+        }
 
     # ── CHECK: exact/contains rule_value ──
     if rule_normalized:

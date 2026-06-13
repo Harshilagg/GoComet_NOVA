@@ -116,7 +116,7 @@ RULES:
     return prompt
 
 
-def route_decision(validation_output: dict, customer_name: str = None) -> dict:
+def route_decision(validation_output: dict, customer_name: str | None = None) -> dict:
     """
     Router Agent — Primary Entry Point.
 

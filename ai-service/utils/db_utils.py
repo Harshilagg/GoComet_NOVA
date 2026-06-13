@@ -372,7 +372,7 @@ def get_shipment_full(shipment_id: str) -> dict | None:
         conn.close()
 
 
-def list_shipments(limit: int = 50, customer_id: str = None) -> list:
+def list_shipments(limit: int = 50, customer_id: str | None = None) -> list:
     """Returns a summary list of shipments, newest first."""
     conn = get_connection()
     try:
