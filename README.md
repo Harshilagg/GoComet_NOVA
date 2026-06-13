@@ -19,6 +19,7 @@ An AI-powered platform that automates trade document processing using a **4-agen
 - [Query Agent — Natural Language to SQL](#query-agent--natural-language-to-sql)
 - [API Endpoints](#api-endpoints)
 - [Key Design Decisions](#key-design-decisions)
+- [Tested Sample Documnets])(#example-test-cases)
 
 ---
 
@@ -435,17 +436,17 @@ The answer is always **grounded in actual database results** — the LLM cannot 
 You can view the test documents used to evaluate this pipeline here:
 **[Link to Test Documents Folder]** *(Add drive link here)*
 
-### 1. `GoComet_Test-1.pdf` (Clean Digital PDF)
+### 1. `Test-1_Approved(Nike).pdf` (Clean Digital PDF)
 - **Document Type**: Commercial Invoice (Digital)
 - **Pipeline Result**: ✅ **Auto Approve**
 - **How it works**: The pipeline bypassed OCR and instantly extracted the text via the PyMuPDF fast-path. The Extractor Agent pulled all 8 fields with ~95%+ confidence. The Validator Agent matched all fields perfectly against the rules, resulting in an automatic approval with zero human intervention.
 
-### 2. `GoComet_Test-2.pdf` (Data Mismatch)
+### 2. `Test-2_Amendment(Nike).pdf` (Data Mismatch)
 - **Document Type**: Commercial Invoice
 - **Pipeline Result**: ❌ **Amendment Required**
 - **How it works**: The extracted data contained a critical error that violated the compliance rules. The Validator Agent detected a hard mismatch between the expected allowed values and the found value. The Router Agent flagged this as a failure and generated an "Amendment Draft" explicitly detailing what needs to be changed.
 
-### 3. `Adobe Scan 13-Jun-2026.pdf` (Handwritten/Scanned)
+### 3. `Test-3_HumanReview(Apple).pdf` (Handwritten/Scanned)
 - **Document Type**: Scanned Document
 - **Pipeline Result**: ⚠️ **Human Review**
 - **How it works**: This file was a low-quality scan with handwriting. The PaddleOCR pipeline extracted the text, but the OCR misread "Apple Inc." as "Aphle Inc.". Instead of throwing a hard mismatch, the Validator's **Fuzzy Matching logic** detected that "Aphle" was highly similar to "Apple". It smartly flagged the field as *Uncertain* (possible OCR misread) rather than a strict error, gracefully routing the document to a human operator for a quick manual review.
