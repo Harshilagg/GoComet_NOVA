@@ -1,14 +1,14 @@
 services:
-  # 1. AI Intelligence Service (Docker)
+  # 1. Backend Server (Node.js)
   - type: web
-    name: ai-service
-    env: docker
-    dockerContext: ai-service
-    dockerfilePath: ai-service/Dockerfile
-    plan: starter # Recommend starter plan for PaddleOCR memory needs
+    name: gocomet-nova-server
+    env: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
     envVars:
-      - key: GROQ_API_KEY
-        sync: false
+      - key: PYTHON_SERVICE_URL
+        value: https://aggarwalharshil02-gocomet-nova.hf.space
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
@@ -17,35 +17,16 @@ services:
         sync: false
       - key: AWS_BUCKET_NAME
         sync: false
-      - key: FIREBASE_PROJECT_ID
-        sync: false
-      - key: FIREBASE_CLIENT_EMAIL
-        sync: false
-      - key: FIREBASE_PRIVATE_KEY
+      - key: GROQ_API_KEY
         sync: false
 
-  # 2. Backend Server (Node.js)
+  # 2. Frontend Client (Static Site)
   - type: web
-    name: rolling-arrays-server
-    env: node
-    buildCommand: npm install
-    startCommand: node server.js
-    envVars:
-      - fromService:
-          name: ai-service
-          type: web
-          property: host
-        key: AI_SERVICE_HOST
-
-  # 3. Frontend Client (Static Site)
-  - type: web
-    name: rolling-arrays-client
+    name: gocomet-nova-client
     env: static
+    rootDir: client
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
-      - fromService:
-          name: rolling-arrays-server
-          type: web
-          property: host
-        key: VITE_API_URL
+      - key: VITE_API_URL
+        sync: false

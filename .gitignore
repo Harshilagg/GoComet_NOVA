@@ -1,3 +1,36 @@
+# Environment files
 .env
 server/.env
 client/.env
+ai-service/.env
+
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Python
+ai-service/venv/
+ai-service/.venv/
+ai-service/__pycache__/
+ai-service/services/__pycache__/
+ai-service/utils/__pycache__/
+*.pyc
+
+# Database files
+*.db
+*.db-wal
+*.db-shm
+
+# Temp files
+temp_*
+proc_*
+
+# OS
+.DS_Store
+
+# HF Space local clone (not part of Render deploy)
+hf-space-deploy/
+
+# Build output
+client/dist/
